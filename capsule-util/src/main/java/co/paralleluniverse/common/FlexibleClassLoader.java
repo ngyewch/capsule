@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.Enumeration;
+import java.util.NoSuchElementException;
 
 /**
  *
@@ -77,7 +78,7 @@ public abstract class FlexibleClassLoader extends ClassLoader {
         Enumeration[] tmp = new Enumeration[2];
         tmp[childFirst ? 1 : 0] = super.getResources(name);
         tmp[childFirst ? 0 : 1] = findResources1(name);
-        return new sun.misc.CompoundEnumeration<URL>(tmp);
+        return new CompoundEnumeration<URL>(tmp);
     }
 
     @Override
@@ -106,4 +107,34 @@ public abstract class FlexibleClassLoader extends ClassLoader {
     protected abstract InputStream findResourceAsStream(String name);
 
     protected abstract byte[] readResource(String name);
+
+    private static final class CompoundEnumeration<E> implements Enumeration<E> {
+        private final Enumeration<E>[] enums;
+        private int index;
+
+        public CompoundEnumeration(Enumeration<E>[] enums) {
+            this.enums = enums;
+        }
+
+        private boolean next() {
+            while (index < enums.length) {
+                if (enums[index] != null && enums[index].hasMoreElements()) {
+                    return true;
+                }
+                index++;
+            }
+            return false;
+        }
+
+        public boolean hasMoreElements() {
+            return next();
+        }
+
+        public E nextElement() {
+            if (!next()) {
+                throw new NoSuchElementException();
+            }
+            return enums[index].nextElement();
+        }
+    }
 }

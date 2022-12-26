@@ -1,4 +1,0 @@
-include 'capsule'
-include 'capsule-util'
-
-rootProject.name = 'capsule'

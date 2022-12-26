@@ -27,7 +27,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
@@ -1357,7 +1356,7 @@ public class Capsule implements Runnable, InvocationHandler {
         else {
             Runtime.getRuntime().addShutdownHook(new Thread(this, "cleanup"));
 
-            overridePlatformMBeanServer();
+            //overridePlatformMBeanServer();
 
             if (!isInheritIoBug())
                 pb.inheritIO();
@@ -1368,9 +1367,6 @@ public class Capsule implements Runnable, InvocationHandler {
                 return 0;
 
             setStage(STAGE_LIFTOFF);
-            final int pid = getPid(oc.child);
-            if (pid > 0)
-                System.setProperty(PROP_CAPSULE_APP_PID, Integer.toString(pid));
 
             if (isInheritIoBug())
                 pipeIoStreams();
@@ -1846,12 +1842,7 @@ public class Capsule implements Runnable, InvocationHandler {
                 System.exit((Integer) payload);
                 break;
             case MESSAGE_START_JMX:
-                if (AGENT) {
-                    final JMXServiceURL jmxurl = startJMXServer();
-                    if (jmxurl != null)
-                        send(MESSAGE_JMX_URL, jmxurl);
-                }
-                break;
+                throw new UnsupportedOperationException("Removed JMX support for JDK 11");
             case MESSAGE_JMX_URL:
                 if (!AGENT)
                     connectToJMX((JMXServiceURL) payload);
@@ -5369,61 +5360,6 @@ public class Capsule implements Runnable, InvocationHandler {
     //</editor-fold>
     //</editor-fold>
 
-    //<editor-fold defaultstate="collapsed" desc="POSIX">
-    /////////// POSIX ///////////////////////////////////
-    private static int getPid(Process p) {
-        try {
-            java.lang.reflect.Field pidField = p.getClass().getDeclaredField("pid");
-            pidField.setAccessible(true);
-            return pidField.getInt(p);
-        } catch (Exception e) {
-            return -1;
-        }
-    }
-    //</editor-fold>
-
-    //<editor-fold defaultstate="collapsed" desc="JMX">
-    /////////// JMX ///////////////////////////////////
-    /**
-     * The Capsule agent will invoke this method to start a JMX Server.
-     * The default implementation creates a local JMX connector.
-     *
-     * For internal use; subject to change/removal.
-     *
-     * @return The JMX service URL that the parent Capsule process will use to connect and proxy JMX commands.
-     *
-     * @deprecated marked deprecated to exclude from javadoc
-     */
-    protected JMXServiceURL startJMXServer() {
-        /*
-        * https://github.com/openjdk-mirror/jdk7u-jdk/blob/master/src/share/classes/sun/management/Agent.java
-        * https://github.com/openjdk-mirror/jdk7u-jdk/blob/master/src/share/classes/sun/management/jmxremote/ConnectorBootstrap.java
-         */
-        final String LOCAL_CONNECTOR_ADDRESS_PROP = "com.sun.management.jmxremote.localConnectorAddress";
-
-        try {
-            log(LOG_VERBOSE, "Starting JMXConnectorServer");
-            final JMXServiceURL url;
-
-            // final JMXConnectorServer jmxServer = JMXConnectorServerFactory.newJMXConnectorServer(new JMXServiceURL("rmi", null, 0), null, ManagementFactory.getPlatformMBeanServer());
-            // jmxServer.start(); // prevents the app from shutting down (requires jmxServer.stop()). See ConnectorBootstrap.PermanentExporter
-            // url = jmxServer.getAddress();
-            final Properties agentProps = sun.misc.VMSupport.getAgentProperties();
-            if (agentProps.get(LOCAL_CONNECTOR_ADDRESS_PROP) == null) {
-                log(LOG_VERBOSE, "Starting management agent");
-                sun.management.Agent.agentmain(null); // starts a JMXConnectorServer that does not prevent the app from shutting down
-            }
-            url = new JMXServiceURL((String) agentProps.get(LOCAL_CONNECTOR_ADDRESS_PROP));
-
-            log(LOG_VERBOSE, "JMXConnectorServer started JMX at " + url);
-            return url;
-        } catch (Exception e) {
-            log(LOG_VERBOSE, "JMXConnectorServer failed: " + e.getMessage());
-            log(LOG_VERBOSE, e);
-            return null;
-        }
-    }
-
     private MBeanServerConnection connectToJMX(JMXServiceURL url) {
         try {
             log(LOG_VERBOSE, "Connecting to JMX server at: " + url);
@@ -5469,21 +5405,6 @@ public class Capsule implements Runnable, InvocationHandler {
             return MY_CLASSLOADER;
         else
             throw new UnsupportedOperationException();
-    }
-
-    private void overridePlatformMBeanServer() {
-        try {
-            MBeanServer platformMBeanServer = ManagementFactory.getPlatformMBeanServer();
-            if (platformMBeanServer instanceof com.sun.jmx.mbeanserver.JmxMBeanServer) {
-                Field interceptorField = accessible(com.sun.jmx.mbeanserver.JmxMBeanServer.class.getDeclaredField("mbsInterceptor"));
-                this.origMBeanServer = (MBeanServer) interceptorField.get(platformMBeanServer);
-                MBeanServer interceptor = (MBeanServer) Proxy.newProxyInstance(MY_CLASSLOADER, new Class<?>[]{MBeanServer.class}, this);
-                interceptorField.set(platformMBeanServer, interceptor);
-            }
-            // accessible(ManagementFactory.class.getDeclaredField("platformMBeanServer")).set(null, this);
-        } catch (ReflectiveOperationException e) {
-            throw rethrow(e);
-        }
     }
 
     /**
