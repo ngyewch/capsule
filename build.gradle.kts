@@ -1,5 +1,5 @@
 subprojects {
-    group = "io.github.ngyewch.capsule"
+    group = "com.github.ngyewch.capsule"
     version = "1.2.0"
 
     repositories {
